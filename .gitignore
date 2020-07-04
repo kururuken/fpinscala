@@ -10,3 +10,7 @@ project.vim
 .project
 .classpath
 .metadata/
+
+.vscode
+.bloop
+.metals
