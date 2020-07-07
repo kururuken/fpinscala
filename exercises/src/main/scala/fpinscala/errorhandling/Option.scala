@@ -57,6 +57,16 @@ object Option {
   def map2[A,B,C](a: Option[A], b: Option[B])(f: (A, B) => C): Option[C] = 
     a flatMap (aa => b flatMap (bb => Some(f(aa, bb))))
 
+  // for comprehension, see https://docs.scala-lang.org/tutorials/FAQ/yield.html
+  // for(x <- c1; y <- c2; z <- c3) yield {...}
+  // is translated into
+  // c1.flatMap(x => c2.flatMap(y => c3.map(z => {...})))
+  def map2_2[A,B,C](a: Option[A], b: Option[B])(f: (A, B) => C): Option[C] = 
+    for {
+      aa <- a
+      bb <- b
+    } yield f(aa, bb)
+
   def sequence[A](a: List[Option[A]]): Option[List[A]] =
     // a.foldRight[Option[A]] (Some(Nil)) ((x, y) => map2(x, y)(x :: y))
     a.foldRight(Some(Nil): Option[List[A]])((x, y) => map2(x, y)(_ :: _))
