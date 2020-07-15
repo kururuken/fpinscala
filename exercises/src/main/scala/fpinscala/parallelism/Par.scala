@@ -21,6 +21,11 @@ object Par {
     (es: ExecutorService) => {
       val af = a(es) 
       val bf = b(es)
+
+      // By adding one print here we can know that the computation flow is built
+      // when we decide to evaluate
+      // println("test")
+
       UnitFuture(f(af.get, bf.get)) // This implementation of `map2` does _not_ respect timeouts, and eagerly waits for the returned futures. This means that even if you have passed in "forked" arguments, using this map2 on them will make them wait. It simply passes the `ExecutorService` on to both `Par` values, waits for the results of the Futures `af` and `bf`, applies `f` to them, and wraps them in a `UnitFuture`. In order to respect timeouts, we'd need a new `Future` implementation that records the amount of time spent evaluating `af`, then subtracts that time from the available time allocated for evaluating `bf`.
     }
   
@@ -28,12 +33,33 @@ object Par {
     es => es.submit(new Callable[A] { 
       def call = a(es).get
     })
+  
+  def lazyUnit[A](a: => A): Par[A] = fork(unit(a))
+  
+  def asyncF[A,B](f: A => B): A => Par[B] = a => lazyUnit(f(a))
 
   def map[A,B](pa: Par[A])(f: A => B): Par[B] = 
     map2(pa, unit(()))((a,_) => f(a))
 
   def sortPar(parList: Par[List[Int]]) = map(parList)(_.sorted)
 
+  // Actually no other primitives is allowed so this implementation is not good
+  // see answer
+  def sequence[A](ps: List[Par[A]]): Par[List[A]] = 
+    ps.foldRight(unit(List[A]()))((h, t) => map2(h, t)(_ :: _))
+  
+  def parMap[A,B](ps: List[A])(f: A => B): Par[List[B]] = 
+    fork { 
+      val fbs: List[Par[B]] = ps.map(asyncF(f)) 
+      sequence(fbs) 
+    }
+  
+  // use fork or not is just an option and should be left to user to decide?
+  def parFilter[A](as: List[A])(f: A => Boolean): Par[List[A]] = {
+    val l: List[Par[List[A]]] = as.map(asyncF(x => if (f(x)) List(x) else List())) 
+    map(sequence(l))(_.flatten) // convert to Par[List[List[A]]] and we can make use of flatten
+  }
+    
   def equal[A](e: ExecutorService)(p: Par[A], p2: Par[A]): Boolean = 
     p(e).get == p2(e).get
 
@@ -44,6 +70,35 @@ object Par {
     es => 
       if (run(es)(cond).get) t(es) // Notice we are blocking on the result of `cond`.
       else f(es)
+  
+  def choiceN[A](n: Par[Int])(choices: List[Par[A]]): Par[A] = 
+    es => {
+      val idx = run(es)(n).get
+      run(es)(choices(idx))
+    }
+  
+  def choiceViaChoiceN[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
+    choiceN(map(cond)(if (_) 0 else 1))(List(t, f))
+  
+  def choiceMap[K,V](key: Par[K])(choices: Map[K,Par[V]]): Par[V] = 
+    es => {
+      val idx = run(es)(key).get
+      run(es)(choices(idx))
+    }
+  
+  def flatMap[A,B](a: Par[A])(f: A => Par[B]): Par[B] =
+    es => {
+      val idx = run(es)(a).get
+      run(es)(f(idx))
+    }
+  
+  def choiceViaFlatMap[A](cond: Par[Boolean])(t: Par[A], f: Par[A]): Par[A] =
+    flatMap(cond)(if (_) t else f)
+  
+  def choiceNViaFlatMap[A](n: Par[Int])(choices: List[Par[A]]): Par[A] = 
+    flatMap(n)(choices(_))
+  
+  
 
   /* Gives us infix syntax for `Par`. */
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)

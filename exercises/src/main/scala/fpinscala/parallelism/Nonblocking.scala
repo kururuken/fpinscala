@@ -6,6 +6,13 @@ import language.implicitConversions
 
 object Nonblocking {
 
+  // Call the callback fucntion k on the result when result is available
+  // Yes! Although theres is nothing stored in Future explicitly, it actually contains some results from outer closures
+  // outer primitives that returns a Par[A] will either
+  // 1. takes other Pars as input that contain some results
+  // 2. takes original data types as original result for later combination.
+  // so Par and Future must lie inside some CLOSURES
+  // For example, run just takes the result stored in some Par, evaluate it asynchronously, wait for the result to be ready and return the result
   trait Future[+A] {
     private[parallelism] def apply(k: A => Unit): Unit
   }
@@ -76,6 +83,8 @@ object Nonblocking {
       }
 
     // specialized version of `map`
+    // I guess p(es)(a => cb(f(a))) will also work
+    // this is just letting the map action happens in another thread
     def map[A,B](p: Par[A])(f: A => B): Par[B] =
       es => new Future[B] {
         def apply(cb: B => Unit): Unit =
@@ -131,10 +140,15 @@ object Nonblocking {
           }
       }
 
-    def choiceN[A](p: Par[Int])(ps: List[Par[A]]): Par[A] = ???
+    def choiceN[A](p: Par[Int])(ps: List[Par[A]]): Par[A] = 
+      es => new Future[A] {
+        def apply(cb: A => Unit): Unit = {
+          p(es) { idx => eval(es) (ps(idx)(es)(cb))}
+        }
+      }
 
     def choiceViaChoiceN[A](a: Par[Boolean])(ifTrue: Par[A], ifFalse: Par[A]): Par[A] =
-      ???
+      choiceN(map(a)(if (_) 0 else 1))(List(ifTrue, ifFalse))
 
     def choiceMap[K,V](p: Par[K])(ps: Map[K,Par[V]]): Par[V] =
       ???
@@ -144,13 +158,17 @@ object Nonblocking {
       ???
 
     def flatMap[A,B](p: Par[A])(f: A => Par[B]): Par[B] =
-      ???
+      es => new Future[B] {
+        def apply(cb: B => Unit): Unit = {
+          p(es) { a => eval(es) (f(a)(es)(cb))}
+        }
+      }
 
-    def choiceViaChooser[A](p: Par[Boolean])(f: Par[A], t: Par[A]): Par[A] =
-      ???
+    def choiceViaFlatMap[A](p: Par[Boolean])(f: Par[A], t: Par[A]): Par[A] =
+      flatMap(p)(if (_) f else t)
 
-    def choiceNChooser[A](p: Par[Int])(choices: List[Par[A]]): Par[A] =
-      ???
+    def choiceNViaFlatMap[A](p: Par[Int])(choices: List[Par[A]]): Par[A] =
+      flatMap(p)(choices(_))
 
     def join[A](p: Par[Par[A]]): Par[A] =
       ???

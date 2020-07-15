@@ -6,6 +6,27 @@ import org.scalatest._
 class StreamSpec extends FlatSpec with Matchers {
     val s = Stream(1, 2, 3)
 
+    // We can do a small test to see how things work
+    // We change the functions so they have logs
+    //
+    // def foldRight[B](z: => B)(f: (A, => B) => B): B = 
+    //   this match {
+    //     case Cons(h,t) => f({println("1"); h()}, {println("2"); t().foldRight(z)(f)}) 
+    //     case _ => z
+    //   }
+    // 
+    // def toList: List[A] = 
+    //     foldRight[List[A]](Nil)((h, t) => {println("3"); h :: t}) 
+    //
+    // And the following expression 
+    // val tmp = Stream(1,2,3).map(_ + 10).filter(_ % 2 == 0)
+    // will actually print 1, 1, 2, 2, 1, 1
+    // 
+    // And the following 
+    // val tmp = Stream(1,2,3).map(_ + 10).filter(_ % 2 == 0).toList
+    // will print 1, 1, 2, 2, 1, 1, 3, 2, 2, 2, 1, 1, 2, 2
+
+
     "Stream" should "convert to list" in {
         s.toList should equal (List(1, 2, 3))
     }
