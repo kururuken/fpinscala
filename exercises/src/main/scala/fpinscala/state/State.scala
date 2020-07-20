@@ -118,7 +118,34 @@ object RNG {
 // so the case class State just wraps some common functions we will use
 // what it does is just modifying the trasition and computation function run
 // by combining other functions 
+
+// Note original one is 
+// case class State[S,+A](run: S => (A, S))
+// In order to make things easier for chapter 8 where we will make heavy use of 
+// Rand[A] aka State[RNG, A]
+// and some methods implemented above
+// The reason why we make this change is that we cannot inherit a case class
+// There are several alternatives like trait or abstract class (they are almost the same)
+// However we cannot do that because our method flatMap (and also unit) requires us 
+// to return a class instance. But a trait or abstract class cannot be instantiate.
+
+// ABOVE HAS SOME PROBLEMS
+// We cannot make Rand inherits State because it will has some problem
+// for example we want to implement
+// def nonNegativeInt: Rand[Int] = 
+//    int.map(x => if (x < 0) -(x + 1) else x)
+// We make use of the State class's method map
+// The problem is that map is actually returning State[RNG, Int]
+// However our function signature requires to return a Rand[Int]
+// Here comes the problem: 
+// State is the superclass of Rand so you cannot do that
+// you can do that in the reverse direction.
+// So the best way to do that is still to make Rand a type alias of State
+
+// One trick here, notice that we have a val keyword in the default constructor
+// if we don't have this val, run will not be a member of the classs.
 case class State[S,+A](run: S => (A, S)) {
+
   def map[B](f: A => B): State[S, B] =
     flatMap(a => State.unit(f(a)))
 
@@ -131,9 +158,41 @@ case class State[S,+A](run: S => (A, S)) {
   def flatMap[B](f: A => State[S, B]): State[S, B] = State(
     s => {
       val (a, s1) = run(s)
-      f(a) run (s1)
+      f(a).run(s1)
     }
   )
+}
+
+object State {
+
+  type Rand[+A] = State[RNG, A]
+
+  object Rand {
+    val int: Rand[Int] = State(_.nextInt)
+
+    def nonNegativeInt: Rand[Int] = 
+      int.map(x => if (x < 0) -(x + 1) else x)
+    
+    def nonNegativeLessThan(n: Int): Rand[Int] = 
+      nonNegativeInt.flatMap { i => 
+        val mod = i % n
+        if (i + (n-1) - mod >= 0) unit(mod) else nonNegativeLessThan(n)
+      }
+    
+    def interval(start: Int, stopExclusive: Int): Rand[Int] = 
+      nonNegativeLessThan(stopExclusive - start).map(_ + start)
+
+    def double: Rand[Double] = 
+      nonNegativeInt.map(_.toDouble / (Int.MaxValue.toDouble + 1))
+  }
+  // def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
+
+  // create a state with a as output
+  def unit[S, A](a: A): State[S, A] = 
+    new State(s => (a, s))
+
+  def sequence[S, A](fs: List[State[S, A]]): State[S, List[A]] = 
+    fs.foldRight(unit[S, List[A]](List[A]()))((sa, sb) => sa.map2(sb)(_ :: _))
 }
 
 sealed trait Input
@@ -145,14 +204,5 @@ case class Machine(locked: Boolean, candies: Int, coins: Int)
 // See https://stackoverflow.com/questions/58587641/functional-programing-in-scala-exercise-6-11-how-does-this-for-comprehension-wo
 // this answer for detailed explanation
 
-object State {
-  type Rand[A] = State[RNG, A]
-  def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
 
-  // create a state with a as output
-  def unit[S, A](a: A): State[S, A] = 
-    State(s => (a, s))
 
-  def sequence[S, A](fs: List[State[S, A]]): State[S, List[A]] = 
-    fs.foldRight(unit[S, List[A]](List[A]()))((sa, sb) => sa.map2(sb)(_ :: _))
-}
