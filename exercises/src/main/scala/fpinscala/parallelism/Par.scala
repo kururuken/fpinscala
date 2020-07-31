@@ -104,8 +104,10 @@ object Par {
   implicit def toParOps[A](p: Par[A]): ParOps[A] = new ParOps(p)
 
   class ParOps[A](p: Par[A]) {
-
-
+    def map[B](f: A => B): Par[B] = Par.map(p)(f)
+    def map2[B,C](b: Par[B])(f: (A,B) => C): Par[C] = Par.map2(p,b)(f)
+    def zip[B](b: Par[B]): Par[(A,B)] = p.map2(b)((_,_))
+    def flatMap[B](f: A => Par[B]): Par[B] = Par.flatMap(p)(f)
   }
 }
 
